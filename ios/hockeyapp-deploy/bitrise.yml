@@ -1,0 +1,89 @@
+---
+format_version: 1.0.0
+default_step_lib_source: https://github.com/bitrise-io/bitrise-steplib.git
+
+description: |-
+  Simple setup, with a `test` workflow for Pull Request testing,
+  and a `master` workflow for deploy to HockeyApp.
+
+  You can start using this just by filling out the parameters
+  in `app:/envs:`.
+
+app:
+  envs:
+  - BITRISE_PROJECT_PATH: ""
+  - BITRISE_SCHEME: ""
+  - INFO_PLIST_PATH_IN_REPO: ""
+  - HOCKEY_API_TOKEN: ""
+  - HOCKEY_APP_ID: ""
+
+trigger_map:
+- pattern: master
+  is_pull_request_allowed: false
+  workflow: deploy
+- pattern: "*"
+  is_pull_request_allowed: true
+  workflow: test
+
+workflows:
+
+  test:
+    steps:
+    - activate-ssh-key@3.0.2:
+        title: Activate App SSH key
+        inputs:
+        - ssh_key_save_path: "$HOME/.ssh/steplib_ssh_step_id_rsa"
+    - git-clone@3.0.0:
+    - script@0.9.1:
+        inputs:
+        - content: |-
+            #!/bin/bash
+            set -e
+
+            CONFIG_project_info_plist_path="${INFO_PLIST_PATH_IN_REPO}"
+            CONFIG_new_bundle_version="${BITRISE_BUILD_NUMBER}"
+
+            echo " (i) Info.plist path: ${CONFIG_project_info_plist_path}"
+            echo " (i) Build number (bundle version): ${CONFIG_new_bundle_version}"
+
+            # ---------------------
+            # --- Main:
+
+            echo "---- Current Bundle Version:"
+            /usr/libexec/PlistBuddy -c "Print CFBundleVersion" "${CONFIG_project_info_plist_path}"
+
+            echo "---- Set Bundle Version:"
+            echo " * to: ${CONFIG_new_bundle_version}"
+            /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${CONFIG_new_bundle_version}" "${CONFIG_project_info_plist_path}"
+
+            echo "-------------------------"
+
+            echo
+            echo "==> Finished with success"
+            echo
+    - certificate-and-profile-installer@1.2.0: {}
+    - select-xcode-version@2.0.0:
+        inputs:
+        - version_channel_id: "-stable"
+    - xcode-test@1.2.0:
+        title: 'Xcode: Unit Test'
+        inputs:
+        - simulator_device: iPhone 6
+
+  deploy:
+    before_run:
+      - test
+    steps:
+    - xcode-archive@1.2.0:
+        title: 'Xcode: Create Archive'
+    - hockeyapp-deploy@2.1.0:
+        inputs:
+        - api_token: $HOCKEY_API_TOKEN
+        - app_id: $HOCKEY_APP_ID
+        - notes: |-
+            Commit:
+            $GIT_CLONE_COMMIT_MESSAGE_SUBJECT
+            $GIT_CLONE_COMMIT_MESSAGE_BODY
+
+            Hash: $GIT_CLONE_COMMIT_HASH
+        - notify: '0'
