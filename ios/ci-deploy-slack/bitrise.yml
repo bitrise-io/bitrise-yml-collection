@@ -1,0 +1,71 @@
+---
+format_version: 1.0.0
+default_step_lib_source: https://github.com/bitrise-io/bitrise-steplib.git
+
+description: |-
+  Simple setup, with a `primary` workflow for Pull Request testing,
+  and a `master` workflow for deploys with a Slack notification.
+
+  You can start using this just by filling out the parameters
+  in `app:/envs:`.
+
+app:
+  envs:
+  - BITRISE_PROJECT_PATH: ""
+  - BITRISE_SCHEME: ""
+  - SLACK_WEBHOOK_URL: ""
+  - SLACK_CHANNEL: ""
+
+trigger_map:
+- pattern: master
+  is_pull_request_allowed: false
+  workflow: master
+- pattern: "*"
+  is_pull_request_allowed: true
+  workflow: primary
+
+workflows:
+  primary:
+    steps:
+    - git-clone@3.0.0:
+    - certificate-and-profile-installer@1.2.0: {}
+    - select-xcode-version@2.0.0:
+        inputs:
+        - version_channel_id: "-latest"
+    - xcode-test@1.3.0:
+        title: 'Xcode: Unit Test'
+        inputs:
+        - is_clean_build: 'no'
+        - is_full_output: 'no'
+        - simulator_device: iPhone 6 Plus
+
+  master:
+    steps:
+    - git-clone@3.0.0:
+    - certificate-and-profile-installer@1.2.0: {}
+    - select-xcode-version@2.0.0:
+        inputs:
+        - version_channel_id: "-latest"
+    - xcode-test@1.3.0:
+        title: 'Xcode: Unit Test'
+        inputs:
+        - simulator_device: iPhone 6
+          opts:
+            is_expand: false
+        - is_clean_build: 'no'
+    - xcode-archive@1.2.0: {}
+    - bitrise-ios-deploy@2.1.0: {}
+    - slack:
+        inputs:
+        - webhook_url: $SLACK_WEBHOOK_URL
+        - channel: $SLACK_CHANNEL
+        - message: |-
+            `BITRISE_PUBLIC_INSTALL_PAGE_URL`: ${BITRISE_PUBLIC_INSTALL_PAGE_URL}
+            `BITRISE_XCODE_TEST_RESULT`: ${BITRISE_XCODE_TEST_RESULT}
+            `BITRISE_XCODE_TEST_FULL_RESULTS_TEXT`:
+
+            ```
+            ${BITRISE_XCODE_TEST_FULL_RESULTS_TEXT}
+            ```
+          opts:
+            is_expand: true
