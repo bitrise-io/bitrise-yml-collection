@@ -29,10 +29,8 @@ workflows:
 
   test:
     steps:
-    - activate-ssh-key@3.0.2:
-        title: Activate App SSH key
-        inputs:
-        - ssh_key_save_path: "$HOME/.ssh/steplib_ssh_step_id_rsa"
+    - activate-ssh-key@4.0.3:
+        run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
     - git-clone@3.0.0:
     - script@0.9.1:
         inputs:
